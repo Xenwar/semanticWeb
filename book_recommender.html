@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<!-- ME-E4300 - Semantic Web, spring 2015 -->
+<!-- Assignment 2, HTML-template for exercise 2.8 -->
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+<title>SPARQL-results on Google maps</title>
+<style type="text/css">
+html, body, #map-canvas { height: 100%; margin: 0; padding: 0;}
+.item {margin: 10px;}
+.item img {margin-right: 10px}
+</style>
+
+<!-- load Google Maps JavasSript library -->
+<script src="https://maps.googleapis.com/maps/api/js"></script>
+
+<script>
+// global variable for the map object
+var map;
+
+// function for initializing the map
+function initialize() {
+	// show the map
+	var mapOptions = {
+		center: { lat: 61.5, lng: 25},
+		zoom: 7
+	};
+	map = new google.maps.Map(document.getElementById('map-canvas'), mapOptions);
+
+	// SPARQL query
+	var endpoint = "http://ldf.fi/mufi/sparql";		// Set the SPARQL endpoint URL to this variable
+	var query = "PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\
+PREFIX dbo:    <http://dbpedia.org/ontology/>\
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\
+PREFIX dbp: <http://dbpedia.org/property/>\
+PREFIX geo: <http://www.w3.org/2003/01/geo/wgs84_pos#>\
+PREFIX op: <http://environment.data.gov.au/def/op#>\
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>\
+PREFIX skos:  <http://www.w3.org/2004/02/skos/core#>\
+PREFIX esinekortti_: <http://www.cs.helsinki.fi/group/seco/ns/2004/03/18-esinekortti#>\
+PREFIX ms: <http://www.cs.helsinki.fi/group/seco/ns/2004/03/18-esinekortti#>\
+SELECT  ?cityname ?lat ?long ( GROUP_CONCAT(  ?allAboutImage;separator=\" $ \" ) AS ?items )\
+WHERE {\
+    VALUES ?city { \"Kuopio\" \"Vantaa\" }\
+        ?item rdf:type esinekortti_:Esinekortti .\
+        ?item esinekortti_:valmistuspaikka ?locatedIn .\
+        ?item ms:www_kuvatiedosto_pieni_url ?img_url .\
+        ?item rdfs:label ?item_name .\
+        ?locatedIn skos:prefLabel ?city .\
+        BIND (?item_name + \"#\" + ?img_url as ?allAboutImage)\
+        bind(strlang(?city, \"en\") as ?cityname)\
+SERVICE <http://dbpedia.org/sparql> {\
+SELECT   ?cityname ?lat ?long \
+WHERE {\
+        ?city dbo:country ?country.\
+        ?country rdfs:label \"Finland\"@en .\
+        ?city dbo:city ?cityResource .\
+        ?cityResource rdfs:label ?cityname .\
+        ?cityResource\
+        		dbp:latd ?latitudeDegree;\
+                dbp:latm ?latitudeMinute;\
+                dbp:lats ?latitudeSecond;\
+                dbp:latns ?latitudeDirection .\
+    BIND ((xsd:float(?latitudeDegree) + (xsd:float(?latitudeMinute/60.0)) + (xsd:float(?latitudeSecond/3600.0))) as ?lat)\
+        ?cityResource\
+        		dbp:longd ?longDegree;\
+                dbp:latm ?longMinute;\
+                dbp:lats ?longSecond;\
+                dbp:latns ?longDirection .\
+   BIND ((xsd:float(?longDegree) + (xsd:float(?longMinute/60.0)) + (xsd:float(?longSecond/3600.0))) as ?long)}\
+limit 10 \
+}}\
+group by ?cityname ?lat ?long \
+limit 100";			// Set your own query to this variable
+	// Execute the SPARQL query (HTTP GET) using a callback function to relay results back to the JavaScript code
+	if (endpoint != "" && query != "") {
+		var scriptElem = document.createElement("script");
+		scriptElem.src = endpoint + "?query=" + encodeURIComponent(query) + "&format=" + encodeURIComponent("application/sparql-results+json") + "&callback=processSPARQLResults";
+		document.body.appendChild(scriptElem);
+	}
+	// if the SPARQL query is has not been given, show Helsinki city centre as an example
+	else
+		addPoint(new google.maps.LatLng(60.170014, 24.938466), "Helsinki", "<div class='item'><img src='http://www.kulttuurisampo.fi/service/image/?h=50&url=http%3A%2F%2Fwww.kulttuurisampo.fi%2Fimages%2Fdata%2Fmuseosuomi%2Flahti%2Fkuvat%2Frtm1596.jpg'/>Radiovastaanotin:putkiradio</div>");
+}
+
+// callback function to handle SPARQL results (JSON)
+function processSPARQLResults(data) {
+	console.log(data);
+	// Loop through the result rows
+	var points = data.results.bindings;
+  console.log(points);
+	if (points.length > 0) {
+		for (var i=0; i<points.length; i++) {
+			// City coordinates
+			var point = new google.maps.LatLng(points[i].lat.value, points[i].long.value);
+			// HTML presentation of the given results:
+			//  label1#url1 $ label2#url2 ... ->
+			//  <div class='item'><img src='url1'/>label1<div/><div class='item'><img src='url2'/>label2</div> ...
+			var items = points[i].items.value.split(" $ ");
+			var itemsString = "";
+			for (var j=0; j<items.length; j++) {
+				var itemParts = items[j].split("#");
+				var label = itemParts[0];
+				var imgUrl = itemParts[1];
+				itemsString += "<div class='item'><img src='" + imgUrl + "'/>" + label + "</div>";
+			}
+			addPoint(point, points[i].cityname.value, itemsString);
+		}
+	}
+}
+
+
+// function to add a point tho the map
+function addPoint(point, title, infotext) {
+	var marker = new google.maps.Marker({
+		position: point,
+		map: map,
+		title: title
+	});
+	// show the info window when a point is clicked
+	var infowindow = new google.maps.InfoWindow({
+		content: "<h2>" + title + "</h2>" + infotext
+	});
+	google.maps.event.addListener(marker, 'click', function() {
+		infowindow.open(map, marker);
+	});
+	console.log("point added" + point);
+}
+
+// Initialize the map, when the HTML page is loaded
+google.maps.event.addDomListener(window, 'load', initialize);
+</script>
+
+</head>
+
+<body>
+<!-- element for the map canvas -->
+<div id="map-canvas"></div>
+</body>
+
+</html>
