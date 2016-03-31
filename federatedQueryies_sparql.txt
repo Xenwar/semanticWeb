@@ -1,0 +1,48 @@
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX dbo: <http://dbpedia.org/ontology/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX dbp: <http://dbpedia.org/property/>
+PREFIX geo: <http://www.w3.org/2003/01/geo/wgs84_pos#>
+PREFIX op: <http://environment.data.gov.au/def/op#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX esinekortti_: <http://www.cs.helsinki.fi/group/seco/ns/2004/03/18-esinekortti#>
+PREFIX ms: <http://www.cs.helsinki.fi/group/seco/ns/2004/03/18-esinekortti#>
+SELECT ?cityname ?lat ?long ( GROUP_CONCAT( ?allAboutImage;separator="$" ) AS ?items )
+WHERE {
+VALUES ?city { "Kuopio" "Vantaa" }
+?item rdf:type esinekortti_:Esinekortti .
+?item esinekortti_:valmistuspaikka ?locatedIn .
+?item ms:www_kuvatiedosto_pieni_url ?img_url .
+?item rdfs:label ?item_name .
+?locatedIn skos:prefLabel ?city .
+BIND (?item_name + "#" + ?img_url as ?allAboutImage)
+bind(strlang(?city, "en") as ?cityname)
+SERVICE <http://dbpedia.org/sparql> {
+SELECT ?cityname ?lat ?long
+WHERE {
+?city dbo:country ?country.
+?country rdfs:label "Finland"@en .
+?city dbo:city ?cityResource .
+?cityResource rdfs:label ?cityname .
+#collect latitude info
+?cityResource
+dbp:latd ?latitudeDegree;
+dbp:latm ?latitudeMinute;
+dbp:lats ?latitudeSecond;
+dbp:latns ?latitudeDirection .
+BIND ((xsd:float(?latitudeDegree) + (xsd:float(?latitudeMinute/60.0)) + (xsd:float(?latitudeSecond/3600.0)))
+as ?lat)
+#collect longtitude info
+?cityResource
+dbp:longd ?longDegree;
+dbp:latm ?longMinute;
+dbp:lats ?longSecond;
+dbp:latns ?longDirection .
+BIND ((xsd:float(?longDegree) + (xsd:float(?longMinute/60.0)) + (xsd:float(?longSecond/3600.0))) as ?long)
+}
+limit 10 #it does not matter
+}#end of dbpedia
+}
+group by ?cityname ?lat ?long
+limit 100
